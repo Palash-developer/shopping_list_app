@@ -1,4 +1,7 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:shopping_list_app/data/categories.dart';
 import 'package:shopping_list_app/models/category.dart';
 import 'package:shopping_list_app/models/grocery_item.dart';
@@ -17,17 +20,56 @@ class _NewItemState extends State<NewItem> {
   var _enteredQty = 1;
   var _selectedCategory = categories[Categories.vegetables]!;
 
-  void _saveItem() {
+  var _isSending = false;
+
+  void _saveItem() async {
     if (_formKey.currentState!.validate()) {
       _formKey.currentState!.save();
-      Navigator.of(context).pop(
-        GroceryItem(
-          id: DateTime.now().toString(),
-          name: _enteredName,
-          quantity: _enteredQty,
-          category: _selectedCategory,
-        ),
+      setState(() {
+        _isSending = true;
+      });
+      final url = Uri.https(
+        "shopping-list-app-8cbf5-default-rtdb.firebaseio.com",
+        "shopping-list.json",
       );
+
+      try {
+        final response = await http.post(
+          url,
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: json.encode(
+            {
+              "name": _enteredName,
+              "quantity": _enteredQty,
+              "category": _selectedCategory.title,
+            },
+          ),
+        );
+
+        final Map<String, dynamic> resId = json.decode(response.body);
+
+        if (response.statusCode == 200) {
+          // Successfully saved data
+          print("Data saved successfully");
+          if (!context.mounted) return;
+          Navigator.of(context).pop(
+            GroceryItem(
+              id: resId["name"],
+              name: _enteredName,
+              quantity: _enteredQty,
+              category: _selectedCategory,
+            ),
+          );
+        } else {
+          // Failed to save data
+          print("Failed to save data: ${response.statusCode}");
+          print("Response body: ${response.body}");
+        }
+      } catch (error) {
+        print("Error saving data: $error");
+      }
     }
   }
 
@@ -119,13 +161,15 @@ class _NewItemState extends State<NewItem> {
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
                   OutlinedButton(
-                    onPressed: _resetForm,
+                    onPressed: _isSending ? null : _resetForm,
                     child: const Text("Reset"),
                   ),
                   const SizedBox(width: 10),
                   ElevatedButton(
-                    onPressed: _saveItem,
-                    child: const Text("Add Item"),
+                    onPressed: _isSending ? null : _saveItem,
+                    child: _isSending
+                        ? const Text("Saving...")
+                        : const Text("Add Item"),
                   ),
                 ],
               ),
